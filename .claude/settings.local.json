@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python \"C:\\\\Users\\\\manob\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-manob-Documents-web-scrapping\\\\f22ccda9-6aaf-4a0e-97b8-a338731b886c\\\\scratchpad\\\\debug_prices.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\manob\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-manob-Documents-web-scrapping\\\\f22ccda9-6aaf-4a0e-97b8-a338731b886c\\\\scratchpad\\\\test_fix.py\")",
+      "PowerShell(npm install *)",
+      "PowerShell(python --version)"
+    ]
+  }
+}

@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leboncoin Scraper Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- FontAwesome for beautiful icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Main Stylesheet -->
+    <link rel="stylesheet" href="/static/index.css?v=3">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fa-solid fa-satellite-dish icon-glow"></i>
+                    <span>LBC_Station</span>
+                </div>
+                <div id="connection-status" class="status-pill status-connected">
+                    <span class="dot"></span> Connected
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-tab="dashboard">
+                    <i class="fa-solid fa-chart-line"></i> Dashboard
+                </a>
+                <a href="#" class="nav-item" data-tab="listings">
+                    <i class="fa-solid fa-list-ul"></i> Listings
+                    <span id="nav-badge-count" class="nav-badge">0</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="settings">
+                    <i class="fa-solid fa-sliders"></i> Settings
+                </a>
+                <a href="#" class="nav-item" data-tab="logs">
+                    <i class="fa-solid fa-terminal"></i> Logs
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="scraper-quick-toggle">
+                    <span class="toggle-label">Auto-Scraper</span>
+                    <label class="switch">
+                        <input type="checkbox" id="auto-scraper-checkbox">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="content-header">
+                <div class="header-title-area">
+                    <h1 id="page-title">Dashboard</h1>
+                    <p id="page-subtitle" class="text-secondary">Overview of scraping activity and status</p>
+                </div>
+                
+                <div class="header-actions">
+                    <button id="btn-scrape-now" class="btn btn-primary btn-glow">
+                        <i class="fa-solid fa-play"></i> Scrape Now
+                    </button>
+                </div>
+            </header>
+
+            <!-- TAB 1: DASHBOARD -->
+            <section id="tab-dashboard" class="tab-panel active">
+                <!-- Status Cards Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">System Status</span>
+                            <i class="fa-solid fa-server stat-icon icon-blue"></i>
+                        </div>
+                        <div class="stat-value-container">
+                            <span id="status-text" class="stat-value">Idle</span>
+                            <span id="status-indicator" class="status-indicator-dot dot-gray"></span>
+                        </div>
+                        <div class="stat-footer">
+                            <span id="status-subtext" class="text-secondary">Poller is disabled</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card clickable-card" id="card-total-scraped">
+                        <div class="stat-header">
+                            <span class="stat-title">Total Scraped</span>
+                            <i class="fa-solid fa-database stat-icon icon-purple"></i>
+                        </div>
+                        <div class="stat-value-container">
+                            <span id="stat-total-count" class="stat-value">0</span>
+                        </div>
+                        <div class="stat-footer">
+                            <span class="text-secondary">Unique items tracked</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Last Execution</span>
+                            <i class="fa-solid fa-clock stat-icon icon-green"></i>
+                        </div>
+                        <div class="stat-value-container">
+                            <span id="stat-last-run" class="stat-value-small">Never</span>
+                        </div>
+                        <div class="stat-footer">
+                            <span id="stat-time-elapsed" class="text-secondary">Waiting for first run</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Next Scheduled Run</span>
+                            <i class="fa-solid fa-calendar-days stat-icon icon-yellow"></i>
+                        </div>
+                        <div class="stat-value-container">
+                            <span id="stat-next-run" class="stat-value-small">N/A</span>
+                        </div>
+                        <div class="stat-footer">
+                            <span id="stat-countdown" class="text-secondary">Auto-scraper inactive</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Info Row -->
+                <div class="dashboard-details-row">
+                    <!-- Current Config Summary -->
+                    <div class="glass-panel summary-panel">
+                        <h2><i class="fa-solid fa-gears text-gradient"></i> Active Configuration</h2>
+                        <div class="config-summary-grid">
+                            <div class="summary-item">
+                                <span class="summary-label">Active Queries</span>
+                                <span id="summary-queries-count" class="summary-val">0</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Polling Interval</span>
+                                <span id="summary-interval" class="summary-val">Every 5 minutes</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Browser Mode</span>
+                                <span id="summary-headless" class="summary-val">Headless</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Discord Alerts</span>
+                                <span id="summary-discord" class="summary-val"><span class="badge badge-error">Disabled</span></span>
+                            </div>
+                        </div>
+                        <button id="btn-edit-config" class="btn btn-secondary btn-full mt-4">
+                            <i class="fa-solid fa-edit"></i> Adjust Settings
+                        </button>
+                    </div>
+
+                    <!-- Quick Activity Log -->
+                    <div class="glass-panel activity-panel">
+                        <div class="panel-header-row">
+                            <h2><i class="fa-solid fa-list-check text-gradient"></i> Recent Events</h2>
+                            <a href="#" class="view-all-link" id="link-goto-logs">View Logs</a>
+                        </div>
+                        <div class="mini-log-container" id="mini-logs">
+                            <div class="log-placeholder">Waiting for scraper activity...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Query Stats Panel -->
+                    <div class="glass-panel query-stats-panel" style="grid-column: 1 / -1;">
+                        <div class="panel-header-row">
+                            <h2><i class="fa-solid fa-chart-bar text-gradient"></i> Query Stats</h2>
+                        </div>
+                        <table class="query-stats-table mt-3">
+                            <thead>
+                                <tr>
+                                    <th>Query</th>
+                                    <th>Items</th>
+                                    <th>Min Price</th>
+                                    <th>Median Price</th>
+                                    <th>Avg Price</th>
+                                </tr>
+                            </thead>
+                            <tbody id="query-stats-tbody">
+                                <tr><td colspan="5" style="text-align: center; color: var(--text-faint);">No data</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Run History Panel -->
+                    <div class="glass-panel run-history-panel mt-4" style="grid-column: 1 / -1;">
+                        <div class="panel-header-row">
+                            <h2><i class="fa-solid fa-clock-rotate-left text-gradient"></i> Run History</h2>
+                        </div>
+                        <table class="query-stats-table mt-3">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Status</th>
+                                    <th>Items Seen</th>
+                                    <th>New Items</th>
+                                    <th>Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody id="run-history-tbody">
+                                <tr><td colspan="5" style="text-align: center; color: var(--text-faint);">No runs yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 2: LISTINGS -->
+            <section id="tab-listings" class="tab-panel">
+                <div class="glass-panel listings-control-panel">
+                    <div class="filters-row">
+                        <div class="search-input-wrapper">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="listings-search" placeholder="Search saved listings...">
+                        </div>
+                        
+                        <div class="filter-actions">
+                            <div class="select-wrapper">
+                                <i class="fa-solid fa-filter"></i>
+                                <select id="listings-query-filter">
+                                    <option value="all">All Queries</option>
+                                    <!-- Options injected via JS -->
+                                </select>
+                            </div>
+                            <div class="select-wrapper" style="margin-left: 8px;">
+                                <label class="checkbox-container" style="display: flex; align-items: center; height: 38px; margin-right: 10px; cursor: pointer;">
+                                    <input type="checkbox" id="listings-deals-only">
+                                    <span class="checkmark" style="margin-right: 8px;"></span>
+                                    <span>🔥 Deals Only</span>
+                                </label>
+                            </div>
+                            <div class="select-wrapper">
+                                <i class="fa-solid fa-sort"></i>
+                                <select id="listings-sort">
+                                    <option value="date_desc">Date Found (Newest)</option>
+                                    <option value="date_asc">Date Found (Oldest)</option>
+                                    <option value="price_desc">Price (Highest)</option>
+                                    <option value="price_asc">Price (Lowest)</option>
+                                </select>
+                            </div>
+                            <button id="btn-refresh-listings" class="btn btn-secondary" title="Refresh Listings">
+                                <i class="fa-solid fa-arrows-rotate"></i>
+                            </button>
+                            <button id="btn-reset-listings" class="btn btn-secondary" style="color: var(--danger); border-color: rgba(248, 113, 113, 0.35);" title="Clear All Listings">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Listings Grid -->
+                <div id="listings-grid" class="listings-grid mt-4">
+                    <!-- Dynamic cards appear here -->
+                    <div class="listings-empty-state">
+                        <i class="fa-solid fa-folder-open"></i>
+                        <p>No listings found. Run a scrape cycle to fetch results!</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 3: SETTINGS -->
+            <section id="tab-settings" class="tab-panel">
+                <div class="settings-grid">
+                    <!-- Queries Management -->
+                    <div class="glass-panel">
+                        <div class="panel-header-row mb-4">
+                            <h3><i class="fa-solid fa-list-check text-gradient"></i> Saved Queries</h3>
+                            <button type="button" id="btn-add-query" class="btn btn-primary btn-sm">
+                                <i class="fa-solid fa-plus"></i> Add Query
+                            </button>
+                        </div>
+                        <div id="queries-list" class="queries-list-container">
+                            <!-- Dynamic queries injected here -->
+                            <div class="empty-queries-state">No queries defined yet.</div>
+                        </div>
+                    </div>
+
+                    <!-- Global Settings -->
+                    <div class="glass-panel mt-4">
+                        <h3><i class="fa-solid fa-globe text-gradient"></i> Global Settings</h3>
+                        <form id="settings-global-form" class="mt-4">
+                            <div class="form-row">
+                                <div class="form-group col">
+                                    <label for="interval_minutes" class="form-label">Polling Interval (minutes)</label>
+                                    <input type="number" id="interval_minutes" class="form-control" min="1" placeholder="5">
+                                    <span class="form-help">Frequency of background cycles.</span>
+                                </div>
+                                <div class="form-group col flex-center-checkbox">
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="headless" checked>
+                                        <span class="checkmark"></span>
+                                        <span>Run Browser Headless</span>
+                                    </label>
+                                    <span class="form-help">Run in background without window.</span>
+                                </div>
+                            </div>
+                            <div class="form-group mt-4">
+                                <label for="discord_webhook" class="form-label">Discord Webhook URL</label>
+                                <div class="input-action-wrapper">
+                                    <input type="url" id="discord_webhook" class="form-control" placeholder="https://discord.com/api/webhooks/...">
+                                    <button type="button" id="btn-test-webhook" class="btn btn-secondary">
+                                        <i class="fa-solid fa-paper-plane"></i> Test Webhook
+                                    </button>
+                                </div>
+                                <span class="form-help">Receive notifications on new items.</span>
+                            </div>
+                            <div class="form-row mt-4">
+                                <div class="form-group col">
+                                    <label for="deal_threshold_pct" class="form-label">Deal Threshold (%)</label>
+                                    <input type="number" id="deal_threshold_pct" class="form-control" min="1" max="90" placeholder="25">
+                                    <span class="form-help">% below median to flag as 🔥 Deal.</span>
+                                </div>
+                                <div class="form-group col">
+                                    <label for="deal_min_sample" class="form-label">Deal Min Sample Size</label>
+                                    <input type="number" id="deal_min_sample" class="form-control" min="1" placeholder="5">
+                                    <span class="form-help">Min items required before computing deals.</span>
+                                </div>
+                            </div>
+                            <div class="form-actions-row mt-4">
+                                <button type="submit" class="btn btn-primary btn-glow">
+                                    <i class="fa-solid fa-floppy-disk"></i> Save Global Settings
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 4: LOGS -->
+            <section id="tab-logs" class="tab-panel">
+                <div class="glass-panel logs-panel-inner">
+                    <div class="panel-header-row mb-4">
+                        <h3>System Logging Terminal</h3>
+                        <button id="btn-clear-logs" class="btn btn-secondary">
+                            <i class="fa-solid fa-trash-can"></i> Clear Terminal
+                        </button>
+                    </div>
+                    <div class="terminal-window">
+                        <div class="terminal-header">
+                            <span class="terminal-dot dot-red"></span>
+                            <span class="terminal-dot dot-yellow"></span>
+                            <span class="terminal-dot dot-green"></span>
+                            <span class="terminal-title">scraper_daemon.log</span>
+                        </div>
+                        <div class="terminal-body" id="logs-container">
+                            <div class="log-line info">Terminal connected. Fetching system reports...</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Query Modal -->
+    <div id="query-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel">
+            <div class="modal-header">
+                <h3 id="query-modal-title">Add New Query</h3>
+                <button type="button" id="btn-close-modal" class="btn-icon"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="query-form" class="mt-4">
+                <input type="hidden" id="query-id" value="">
+                <div class="form-group">
+                    <label for="query-name" class="form-label">Query Name</label>
+                    <input type="text" id="query-name" class="form-control" placeholder="e.g. RTX 4090 Search" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Search Mode</label>
+                    <div class="radio-toggle-group">
+                        <label class="radio-label">
+                            <input type="radio" name="query_mode" value="query" checked>
+                            <span>Simple Query</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="query_mode" value="url">
+                            <span>Custom URL</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="modal-query-container">
+                    <div class="form-group">
+                        <label for="query-text" class="form-label">Search Term</label>
+                        <input type="text" id="query-text" class="form-control" placeholder="e.g. rtx 4090">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col">
+                            <label for="query-min" class="form-label">Min Price (€)</label>
+                            <input type="number" id="query-min" class="form-control">
+                        </div>
+                        <div class="form-group col">
+                            <label for="query-max" class="form-label">Max Price (€)</label>
+                            <input type="number" id="query-max" class="form-control">
+                        </div>
+                    </div>
+
+                    <div class="form-group checkbox-group mt-2">
+                        <label class="checkbox-container">
+                            <input type="checkbox" id="query-shippable" checked>
+                            <span class="checkmark"></span>
+                            <span>Shippable items only</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="modal-url-container" class="hidden">
+                    <div class="form-group">
+                        <label for="query-url" class="form-label">Leboncoin Custom URL</label>
+                        <input type="url" id="query-url" class="form-control" placeholder="https://www.leboncoin.fr/recherche?...">
+                        <span class="form-help">Paste a complete search URL with all filters applied.</span>
+                    </div>
+                </div>
+
+                <div class="form-group mt-3">
+                    <label for="query-required-keywords" class="form-label">Required Keywords (comma-separated, matches any)</label>
+                    <input type="text" id="query-required-keywords" class="form-control" placeholder="e.g. amd, ryzen, 5950x">
+                    <span class="form-help">Only keep items containing at least one of these words.</span>
+                </div>
+
+                <div class="form-group mt-2">
+                    <label for="query-excluded-keywords" class="form-label">Excluded Keywords (comma-separated)</label>
+                    <input type="text" id="query-excluded-keywords" class="form-control" placeholder="e.g. rtx, intel">
+                    <span class="form-help">Discard any items containing any of these words.</span>
+                </div>
+                
+                <hr class="mt-4 mb-3" style="border-color: var(--border);">
+                
+                <h4 style="margin-bottom: 8px; color: var(--text);">Notifications</h4>
+                <div class="form-group checkbox-group mt-2">
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="query-notify" checked>
+                        <span class="checkmark"></span>
+                        <span>Enable Discord/Desktop Alerts for this query</span>
+                    </label>
+                </div>
+                
+                <div class="form-group mt-2">
+                    <label for="query-webhook-override" class="form-label">Custom Discord Webhook (Override)</label>
+                    <input type="url" id="query-webhook-override" class="form-control" placeholder="Leave empty to use Global Webhook">
+                    <span class="form-help">Route alerts for this specific query to a different Discord channel.</span>
+                </div>
+                
+                <div class="form-actions-row mt-4">
+                    <button type="submit" class="btn btn-primary btn-full"><i class="fa-solid fa-save"></i> Save Query</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Main JavaScript Logic -->
+    <script src="/static/index.js?v=3"></script>
+</body>
+</html>
