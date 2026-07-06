@@ -308,8 +308,8 @@ async def process_scraped_listings(scraped_items: List[dict]):
                 full_msg += f"__**{q_name}** ({len(items)} items):__\n"
                 for item in items:
                     if item.get("is_deal") and item.get("median"):
-                        pct = int((item["median"] - item["price_value"]) / item["median"] * 100)
-                        full_msg += f"- 🔥 **DEAL**: [{item['title']}]({item['url']}) - **{item['price']}** (median {item['median']} €, -{pct}%)\n"
+                        pct = round((item["median"] - item["price_value"]) / item["median"] * 100)
+                        full_msg += f"- 🔥 **DEAL**: [{item['title']}]({item['url']}) - **{item['price']}** (median {round(item['median'])} €, -{pct}%)\n"
                     else:
                         full_msg += f"- [{item['title']}]({item['url']}) - **{item['price']}**\n"
                 full_msg += "\n"
@@ -387,8 +387,8 @@ async def process_scraped_listings(scraped_items: List[dict]):
                 for q_name, items in grouped_drops.items():
                     full_msg += f"**{q_name}**\n"
                     for drop in items:
-                        pct = int((drop["old_price"] - drop["price_value"]) / drop["old_price"] * 100)
-                        full_msg += f"• [{drop['title']}]({drop['url']}) : ~~{drop['old_price']} €~~ **{drop['price']}** ({pct}%)\n"
+                        pct = round((drop["old_price"] - drop["price_value"]) / drop["old_price"] * 100)
+                        full_msg += f"• [{drop['title']}]({drop['url']}) : ~~{round(drop['old_price'])} €~~ **{drop['price']}** (-{pct}%)\n"
                     full_msg += "\n"
                     
                 # Reuse chunking
@@ -412,8 +412,9 @@ async def process_scraped_listings(scraped_items: List[dict]):
                         logger.error(f"Failed to send Discord price drop chunk: {e}")
             if webhook_groups:
                 logger.info("Discord price drop notifications sent successfully.")
-    else:
-        logger.info("Scraping cycle complete. No new items found.")
+    
+    if not new_items and not price_drops:
+        logger.info("Scraping cycle complete. No new items or drops found.")
         
     return len(scraped_items), len(new_items)
 
@@ -450,12 +451,32 @@ async def perform_scraping_cycle():
             
 
             from playwright.async_api import async_playwright
+            import random
+            
+            UAS = [
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0"
+            ]
+            ua = random.choice(UAS)
+            
             async with async_playwright() as p:
-                logger.info(f"Launching browser (headless={headless}) for cycle...")
-                browser = await p.chromium.launch(headless=headless, args=["--disable-blink-features=AutomationControlled"])
+                logger.info(f"Launching browser (headless={headless}) with UA: {ua}")
+                browser = await p.chromium.launch(
+                    headless=headless,
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--disable-web-security",
+                        "--disable-features=IsolateOrigins,site-per-process",
+                    ]
+                )
                 context = await browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    viewport={"width": 1280, "height": 720}
+                    user_agent=ua,
+                    viewport={"width": random.choice([1280, 1366, 1440, 1920]), "height": random.choice([720, 768, 900, 1080])},
+                    locale="fr-FR",
+                    timezone_id="Europe/Paris"
                 )
                 
                 try:
@@ -520,7 +541,10 @@ async def perform_scraping_cycle():
         
         config = load_config()
         interval = config.get("interval_minutes", 5)
-        scraper_state["next_run_time"] = (datetime.now() + timedelta(minutes=interval)).isoformat()
+        # Note: next_run_time is set by the polling loop with jitter applied
+        # Only set it here as a fallback if the loop hasn't set it yet
+        if not scraper_state.get("next_run_time"):
+            scraper_state["next_run_time"] = (datetime.now() + timedelta(minutes=interval)).isoformat()
 
 # Lifespan background task runner
 async def background_polling_loop():
@@ -534,12 +558,15 @@ async def background_polling_loop():
                 # 4b. Randomized polling jitter
                 interval = int(base_interval * random.uniform(0.8, 1.2))
                 
-                # Calculate next run time
+                # Calculate next run time WITH jitter so dashboard countdown is accurate
                 next_run = datetime.now() + timedelta(seconds=interval)
                 scraper_state["next_run_time"] = next_run.isoformat()
                 
                 # Execute
                 await perform_scraping_cycle()
+                
+                # Preserve the jittered next_run_time (perform_scraping_cycle may have reset it)
+                scraper_state["next_run_time"] = next_run.isoformat()
                 
                 # Wait for next run, responsive to changes in state
                 elapsed = 0
@@ -655,13 +682,18 @@ async def toggle_scraper():
     return {"success": True, "is_running": scraper_state["is_running"]}
 
 @app.post("/api/scrape")
-async def trigger_manual_scrape():
+async def trigger_manual_scrape(force: bool = False):
     if scraper_state["is_scraping"]:
         raise HTTPException(status_code=400, detail="Scraper is already active.")
     
+    if force:
+        scraper_state["blocked_until"] = None
+        logger.info("Manual scrape cycle triggered with FORCE bypass.")
+    else:
+        logger.info("Manual scrape cycle triggered via web API.")
+    
     # Run in background to return status instantly
     asyncio.create_task(perform_scraping_cycle())
-    logger.info("Manual scrape cycle triggered via web API.")
     return {"success": True, "message": "Scrape cycle started."}
 
 @app.delete("/api/listings")

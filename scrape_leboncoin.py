@@ -4,6 +4,7 @@ import os
 import urllib.parse
 import logging
 from playwright.async_api import async_playwright
+from playwright_stealth import Stealth
 
 # Setup fallback logger
 logging.basicConfig(level=logging.INFO)
@@ -19,6 +20,7 @@ async def scrape_leboncoin(config: dict, logger: logging.Logger = None, context=
 
     async def _do_scrape(ctx):
         page = await ctx.new_page()
+        await Stealth().apply_stealth_async(page)
         
         # Build URL from configuration
         if config.get("mode") == "url" and config.get("custom_url"):

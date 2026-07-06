@@ -227,8 +227,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusIndicator.style.backgroundColor = 'var(--danger)';
                 statusSubtext.textContent = `Cooldown for ${mins}m ${secs}s`;
                 
-                btnScrapeNow.disabled = true;
-                btnScrapeNow.innerHTML = '<i class="fa-solid fa-ban"></i> Blocked';
+                btnScrapeNow.disabled = false;
+                btnScrapeNow.dataset.force = "true";
+                btnScrapeNow.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Force Scrape';
+                btnScrapeNow.style.backgroundColor = 'var(--danger)';
+                btnScrapeNow.style.borderColor = 'var(--danger)';
             } else if (data.status.is_scraping) {
                 statusIndicator.style.backgroundColor = ''; // Reset inline style
                 statusText.textContent = 'Scraping...';
@@ -237,6 +240,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Add spinning classes to buttons
                 btnScrapeNow.disabled = true;
+                btnScrapeNow.dataset.force = "false";
+                btnScrapeNow.style.backgroundColor = '';
+                btnScrapeNow.style.borderColor = '';
                 btnScrapeNow.innerHTML = '<i class="fa-solid fa-arrows-rotate spin"></i> Scraping';
             } else if (data.status.is_running) {
                 statusIndicator.style.backgroundColor = ''; // Reset inline style
@@ -245,6 +251,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusSubtext.textContent = 'Monitoring background cycles';
                 
                 btnScrapeNow.disabled = false;
+                btnScrapeNow.dataset.force = "false";
+                btnScrapeNow.style.backgroundColor = '';
+                btnScrapeNow.style.borderColor = '';
                 btnScrapeNow.innerHTML = '<i class="fa-solid fa-play"></i> Scrape Now';
             } else {
                 statusIndicator.style.backgroundColor = ''; // Reset inline style
@@ -253,6 +262,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusSubtext.textContent = 'Poller is disabled';
                 
                 btnScrapeNow.disabled = false;
+                btnScrapeNow.dataset.force = "false";
+                btnScrapeNow.style.backgroundColor = '';
+                btnScrapeNow.style.borderColor = '';
                 btnScrapeNow.innerHTML = '<i class="fa-solid fa-play"></i> Scrape Now';
             }
             
@@ -391,9 +403,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.isScraping) return;
         
         try {
-            const res = await fetch('/api/scrape', { method: 'POST' });
+            const isForce = btnScrapeNow.dataset.force === "true";
+            const url = isForce ? '/api/scrape?force=true' : '/api/scrape';
+            const res = await fetch(url, { method: 'POST' });
             if (!res.ok) throw new Error();
-            showToast('Manual scrape cycle initiated.', 'info');
+            showToast(isForce ? 'Forced manual scrape cycle initiated.' : 'Manual scrape cycle initiated.', 'info');
             pollStatus();
         } catch (err) {
             showToast('Failed to trigger scrape cycle.', 'error');

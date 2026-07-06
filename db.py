@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import logging
+import datetime as dt
 from typing import List, Dict, Any
 
 logger = logging.getLogger("scraper_db")
@@ -58,6 +59,10 @@ def init_db():
             )
         ''')
         
+        # Performance index for price_history lookups (needed once rows grow)
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_price_history_url ON price_history (url)
+        ''')
         conn.commit()
         logger.info("Database initialized successfully.")
     except Exception as e:
@@ -130,9 +135,9 @@ def get_listings(search: str = "", sort: str = "date_desc", query_id: str = "all
         elif sort == "date_asc":
             query += " ORDER BY first_seen ASC"
         elif sort == "price_desc":
-            query += " ORDER BY price_value DESC"
+            query += " ORDER BY price_value IS NULL, price_value DESC"
         elif sort == "price_asc":
-            query += " ORDER BY price_value ASC"
+            query += " ORDER BY price_value IS NULL, price_value ASC"
         else:
             query += " ORDER BY first_seen DESC"
 
@@ -216,7 +221,7 @@ def add_price_history(url: str, price_value: float):
         return
     conn = get_conn()
     try:
-        now_str = __import__("datetime").datetime.now().isoformat()
+        now_str = dt.datetime.now().isoformat()
         conn.execute('''
             INSERT INTO price_history (url, price_value, recorded_at)
             VALUES (?, ?, ?)
