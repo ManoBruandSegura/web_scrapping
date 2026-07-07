@@ -8,3 +8,4 @@ config.json
 listings.json*
 seen_items.json
 .browser_profile/
+archive/

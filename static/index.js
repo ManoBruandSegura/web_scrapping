@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
         queries: [] // Array of Query objects
     };
 
+    let priceChart = null; // Chart.js instance for the dashboard price chart
+
     // DOM Elements
     const navItems = document.querySelectorAll('.nav-item');
     const tabPanels = document.querySelectorAll('.tab-panel');
@@ -337,6 +339,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
+
+            renderPriceChart(data.stats.per_query || {});
             
             // Keep state queries in sync to prevent missing filter dropdown data
             if (state.queries.length === 0 && cfg.queries) {
@@ -691,9 +695,53 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('ntfy_topic').value = config.ntfy_topic || '';
             document.getElementById('active_start').value = (config.active_start ?? '');
             document.getElementById('active_end').value = (config.active_end ?? '');
+            document.getElementById('proxy').value = config.proxy || '';
+            document.getElementById('archive_images').checked = config.archive_images === true;
             
         } catch (err) {
             showToast('Failed to load active scraper configuration.', 'error');
+        }
+    }
+
+    function renderPriceChart(perQuery) {
+        const canvas = document.getElementById('price-chart');
+        if (!canvas || typeof Chart === 'undefined') return;
+
+        const qMap = {};
+        (state.queries || []).forEach(q => qMap[q.id] = q.name);
+        const entries = Object.entries(perQuery);
+        const labels = entries.map(([qId]) => qMap[qId] || qId);
+        const mins = entries.map(([, s]) => Math.round(s.min));
+        const medians = entries.map(([, s]) => Math.round(s.median));
+        const avgs = entries.map(([, s]) => Math.round(s.avg));
+
+        if (!priceChart) {
+            priceChart = new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'Min', data: mins, backgroundColor: 'rgba(56, 189, 248, 0.7)' },
+                        { label: 'Median', data: medians, backgroundColor: 'rgba(139, 92, 246, 0.85)' },
+                        { label: 'Avg', data: avgs, backgroundColor: 'rgba(148, 163, 184, 0.6)' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#cbd5e1' } } },
+                    scales: {
+                        x: { ticks: { color: '#cbd5e1' }, grid: { color: 'rgba(148,163,184,0.1)' } },
+                        y: { ticks: { color: '#cbd5e1', callback: v => v + ' €' }, grid: { color: 'rgba(148,163,184,0.1)' } }
+                    }
+                }
+            });
+        } else {
+            priceChart.data.labels = labels;
+            priceChart.data.datasets[0].data = mins;
+            priceChart.data.datasets[1].data = medians;
+            priceChart.data.datasets[2].data = avgs;
+            priceChart.update('none'); // no animation on the 2.5s refresh
         }
     }
 
@@ -875,6 +923,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const endRaw = document.getElementById('active_end').value;
         const active_start = startRaw === '' ? null : parseInt(startRaw);
         const active_end = endRaw === '' ? null : parseInt(endRaw);
+        const proxy = document.getElementById('proxy').value.trim();
+        const archive_images = document.getElementById('archive_images').checked;
 
         const payload = {
             queries: state.queries,
@@ -885,7 +935,9 @@ document.addEventListener('DOMContentLoaded', () => {
             deal_min_sample,
             ntfy_topic,
             active_start,
-            active_end
+            active_end,
+            proxy,
+            archive_images
         };
 
         try {

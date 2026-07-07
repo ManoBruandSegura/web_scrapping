@@ -10,6 +10,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- FontAwesome for beautiful icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for the price chart -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <!-- Main Stylesheet -->
     <link rel="stylesheet" href="/static/index.css?v=3">
 </head>
@@ -171,6 +173,9 @@
                     <div class="glass-panel query-stats-panel" style="grid-column: 1 / -1;">
                         <div class="panel-header-row">
                             <h2><i class="fa-solid fa-chart-bar text-gradient"></i> Query Stats</h2>
+                        </div>
+                        <div style="position: relative; height: 280px; margin-top: 12px;">
+                            <canvas id="price-chart"></canvas>
                         </div>
                         <table class="query-stats-table mt-3">
                             <thead>
@@ -338,6 +343,19 @@
                                     <input type="number" id="active_end" class="form-control" min="0" max="23" placeholder="e.g. 23">
                                     <span class="form-help">Skip scrapes at/after this hour. Blank = always on.</span>
                                 </div>
+                            </div>
+                            <div class="form-group mt-4">
+                                <label for="proxy" class="form-label">Proxy URL (anti-ban)</label>
+                                <input type="text" id="proxy" class="form-control" placeholder="http://user:pass@host:port">
+                                <span class="form-help">Route the scraper through a proxy. Residential/mobile recommended. Blank = direct connection.</span>
+                            </div>
+                            <div class="form-group mt-4 flex-center-checkbox">
+                                <label class="checkbox-container">
+                                    <input type="checkbox" id="archive_images">
+                                    <span class="checkmark"></span>
+                                    <span>Archive listing images</span>
+                                </label>
+                                <span class="form-help">Save each new listing's image to <code>archive/</code> so it survives after the ad is deleted.</span>
                             </div>
                             <div class="form-actions-row mt-4">
                                 <button type="submit" class="btn btn-primary btn-glow">

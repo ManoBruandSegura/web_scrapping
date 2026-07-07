@@ -46,6 +46,14 @@ def init_db():
             conn.execute("ALTER TABLE listings ADD COLUMN is_deal INTEGER DEFAULT 0")
         except sqlite3.OperationalError:
             pass # Column already exists
+
+        # Archiving (Tier 2): keep the image after an ad is pruned/deleted.
+        # description is reserved for later (needs a detail-page visit).
+        for col in ("image_path TEXT", "description TEXT"):
+            try:
+                conn.execute(f"ALTER TABLE listings ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass # Column already exists
             
         conn.execute('''
             CREATE TABLE IF NOT EXISTS run_history (
@@ -229,6 +237,16 @@ def add_price_history(url: str, price_value: float):
         conn.commit()
     except Exception as e:
         logger.error(f"Error adding price history for {url}: {e}")
+    finally:
+        conn.close()
+
+def set_image_path(url: str, image_path: str):
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE listings SET image_path = ? WHERE url = ?", (image_path, url))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error setting image_path for {url}: {e}")
     finally:
         conn.close()
 

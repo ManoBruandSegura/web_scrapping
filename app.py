@@ -2,6 +2,8 @@ import asyncio
 import json
 import os
 import urllib.request
+import urllib.parse
+import hashlib
 import logging
 import re
 from collections import deque
@@ -77,6 +79,7 @@ BLOCK_COOLDOWN_MAX_MINUTES = 480     # cap the backoff at 8h
 # Stable browser identity — a coherent, fixed fingerprint reads as human on a
 # single home IP; rotating UA/viewport every cycle is itself a bot signal.
 BROWSER_PROFILE_DIR = os.path.join(BASE_DIR, ".browser_profile")
+ARCHIVE_DIR = os.path.join(BASE_DIR, "archive")
 BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 BROWSER_VIEWPORT = {"width": 1920, "height": 1080}
 
@@ -106,6 +109,8 @@ class ConfigModel(BaseModel):
     ntfy_topic: Optional[str] = ""
     active_start: Optional[int] = None   # hour [0-23]; None = always active
     active_end: Optional[int] = None
+    proxy: Optional[str] = ""            # e.g. http://user:pass@host:port; blank = direct
+    archive_images: bool = False         # download each new listing's thumbnail to archive/
 
 # Helper functions
 def load_config() -> dict:
@@ -139,7 +144,9 @@ def load_config() -> dict:
         "deal_min_sample": 5,
         "ntfy_topic": "",
         "active_start": None,
-        "active_end": None
+        "active_end": None,
+        "proxy": "",
+        "archive_images": False
     }
 
 def save_config(config: dict):
@@ -207,6 +214,53 @@ def within_active_hours(config: dict) -> bool:
         return start <= hour < end
     return hour >= start or hour < end  # window crossing midnight
 
+def parse_proxy(config: dict):
+    """Turn a config 'proxy' URL into Playwright's proxy dict, or None."""
+    raw = (config.get("proxy") or "").strip()
+    if not raw:
+        return None
+    parsed = urllib.parse.urlparse(raw)
+    if not parsed.hostname:
+        logger.warning(f"Ignoring malformed proxy value: {raw!r}")
+        return None
+    server = f"{parsed.scheme or 'http'}://{parsed.hostname}"
+    if parsed.port:
+        server += f":{parsed.port}"
+    proxy = {"server": server}
+    if parsed.username:
+        proxy["username"] = urllib.parse.unquote(parsed.username)
+    if parsed.password:
+        proxy["password"] = urllib.parse.unquote(parsed.password)
+    return proxy
+
+def archive_image_sync(url: str, image_url: str):
+    """Download a listing's thumbnail to archive/. Returns the relative path or None.
+    Uses the already-scraped CDN image URL — no extra Datadome-protected page load."""
+    try:
+        os.makedirs(ARCHIVE_DIR, exist_ok=True)
+        ext = os.path.splitext(urllib.parse.urlparse(image_url).path)[1]
+        if not ext or len(ext) > 5:
+            ext = ".jpg"
+        fname = hashlib.sha1(url.encode("utf-8")).hexdigest() + ext
+        path = os.path.join(ARCHIVE_DIR, fname)
+        rel = os.path.join("archive", fname)
+        if os.path.exists(path):
+            return rel
+        req = urllib.request.Request(image_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as res:
+            data = res.read()
+        with open(path, "wb") as f:
+            f.write(data)
+        return rel
+    except Exception as e:
+        logger.error(f"Failed to archive image for {url}: {e}")
+        return None
+
+async def archive_image(url: str, image_url: str):
+    rel = await asyncio.to_thread(archive_image_sync, url, image_url)
+    if rel:
+        db.set_image_path(url, rel)
+
 def filter_listings(listings: List[dict], q: dict) -> List[dict]:
     req_keywords = [k.strip().lower() for k in (q.get("required_keywords") or "").split(",") if k.strip()]
     ex_keywords = [k.strip().lower() for k in (q.get("excluded_keywords") or "").split(",") if k.strip()]
@@ -251,6 +305,7 @@ async def process_scraped_listings(scraped_items: List[dict]):
     config_dict = load_config()
     deal_threshold_pct = config_dict.get("deal_threshold_pct", 25)
     deal_min_sample = config_dict.get("deal_min_sample", 5)
+    archive_images = config_dict.get("archive_images", False)
     stats = db.query_stats()
     
     for item in scraped_items:
@@ -285,6 +340,8 @@ async def process_scraped_listings(scraped_items: List[dict]):
             new_items.append(item_data)
             if item_data["price_value"] is not None:
                 db.add_price_history(item["url"], item_data["price_value"])
+            if archive_images and item_data.get("thumbnail_url"):
+                await archive_image(item["url"], item_data["thumbnail_url"])
         else:
             new_price = item_data["price_value"]
             if new_price is not None and old_price is not None and new_price != old_price:
@@ -498,6 +555,10 @@ async def perform_scraping_cycle():
 
             from playwright.async_api import async_playwright
 
+            proxy = parse_proxy(config)
+            if proxy:
+                logger.info(f"Routing browser through proxy {proxy['server']}")
+
             async with async_playwright() as p:
                 logger.info(f"Launching browser (headless={headless}) with persistent profile...")
                 # Persistent context keeps the Datadome cookie and fingerprint
@@ -506,6 +567,7 @@ async def perform_scraping_cycle():
                 context = await p.chromium.launch_persistent_context(
                     BROWSER_PROFILE_DIR,
                     headless=headless,
+                    proxy=proxy,  # None = direct connection
                     user_agent=BROWSER_UA,
                     viewport=BROWSER_VIEWPORT,
                     locale="fr-FR",
