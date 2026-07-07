@@ -38,4 +38,4 @@ Once started, open your web browser and navigate to:
 ## Configuration
 
 All scraper configurations (queries, intervals, webhook URLs, headless mode) are managed directly from the Web Dashboard's **Settings** tab. These settings are persisted to `config.json`.
-Listings data is stored in `listings.json`. Both files will be generated automatically on first run if they don't exist.
+Listings data is stored in a SQLite database (`scraper.db`). Both files will be generated automatically on first run if they don't exist.

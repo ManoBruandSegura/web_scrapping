@@ -569,10 +569,18 @@ async def background_polling_loop():
                 scraper_state["next_run_time"] = next_run.isoformat()
                 
                 # Wait for next run, responsive to changes in state
-                elapsed = 0
-                while elapsed < interval and scraper_state["is_running"]:
+                # (wall-clock check so laptop sleep/resume can't strand the loop)
+                while scraper_state["is_running"]:
+                    nr = scraper_state.get("next_run_time")
+                    if not nr or datetime.now() >= datetime.fromisoformat(nr):
+                        break
                     await asyncio.sleep(1)
-                    elapsed += 1
+
+                nr = scraper_state.get("next_run_time")
+                if scraper_state["is_running"] and nr:
+                    lateness = (datetime.now() - datetime.fromisoformat(nr)).total_seconds()
+                    if lateness > 60:
+                        logger.warning(f"Missed scheduled run by {int(lateness)}s (system sleep?) — scraping now.")
             else:
                 scraper_state["next_run_time"] = None
                 await asyncio.sleep(1)
@@ -694,6 +702,12 @@ async def trigger_manual_scrape(force: bool = False):
     
     # Run in background to return status instantly
     asyncio.create_task(perform_scraping_cycle())
+
+    # Push the auto-scrape schedule forward so it doesn't fire right after a manual run
+    if scraper_state["is_running"]:
+        interval = load_config().get("interval_minutes", 5) * 60
+        scraper_state["next_run_time"] = (datetime.now() + timedelta(seconds=interval)).isoformat()
+
     return {"success": True, "message": "Scrape cycle started."}
 
 @app.delete("/api/listings")
