@@ -69,8 +69,16 @@ scraper_state = {
     "last_run_time": None,
     "next_run_time": None,
     "blocked_until": None,
+    "consecutive_blocks": 0,
 }
-BLOCK_COOLDOWN_MINUTES = 60
+BLOCK_COOLDOWN_MINUTES = 60          # base cooldown, doubled per consecutive block
+BLOCK_COOLDOWN_MAX_MINUTES = 480     # cap the backoff at 8h
+
+# Stable browser identity — a coherent, fixed fingerprint reads as human on a
+# single home IP; rotating UA/viewport every cycle is itself a bot signal.
+BROWSER_PROFILE_DIR = os.path.join(BASE_DIR, ".browser_profile")
+BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+BROWSER_VIEWPORT = {"width": 1920, "height": 1080}
 
 # Config Pydantic Schema
 class QueryModel(BaseModel):
@@ -451,34 +459,26 @@ async def perform_scraping_cycle():
             
 
             from playwright.async_api import async_playwright
-            import random
-            
-            UAS = [
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0"
-            ]
-            ua = random.choice(UAS)
-            
+
             async with async_playwright() as p:
-                logger.info(f"Launching browser (headless={headless}) with UA: {ua}")
-                browser = await p.chromium.launch(
+                logger.info(f"Launching browser (headless={headless}) with persistent profile...")
+                # Persistent context keeps the Datadome cookie and fingerprint
+                # across cycles, so we accumulate reputation instead of showing up
+                # as an unknown client every cycle.
+                context = await p.chromium.launch_persistent_context(
+                    BROWSER_PROFILE_DIR,
                     headless=headless,
+                    user_agent=BROWSER_UA,
+                    viewport=BROWSER_VIEWPORT,
+                    locale="fr-FR",
+                    timezone_id="Europe/Paris",
                     args=[
                         "--disable-blink-features=AutomationControlled",
                         "--disable-web-security",
                         "--disable-features=IsolateOrigins,site-per-process",
                     ]
                 )
-                context = await browser.new_context(
-                    user_agent=ua,
-                    viewport={"width": random.choice([1280, 1366, 1440, 1920]), "height": random.choice([720, 768, 900, 1080])},
-                    locale="fr-FR",
-                    timezone_id="Europe/Paris"
-                )
-                
+
                 try:
                     for i, q in enumerate(queries):
                         if not q.get("enabled", True):
@@ -499,13 +499,21 @@ async def perform_scraping_cycle():
                             filtered_listings = filter_listings(listings, q)
                             all_listings.extend(filtered_listings)
                         except BlockedError as be:
-                            cooldown_end = datetime.now() + timedelta(minutes=BLOCK_COOLDOWN_MINUTES)
+                            # Exponential backoff: each consecutive block doubles the
+                            # wait (capped). Coming back too soon while the IP is still
+                            # tainted just re-arms the block, so back off harder.
+                            scraper_state["consecutive_blocks"] += 1
+                            cooldown_min = min(
+                                BLOCK_COOLDOWN_MINUTES * (2 ** (scraper_state["consecutive_blocks"] - 1)),
+                                BLOCK_COOLDOWN_MAX_MINUTES,
+                            )
+                            cooldown_end = datetime.now() + timedelta(minutes=cooldown_min)
                             scraper_state["blocked_until"] = cooldown_end.isoformat()
                             blocked_flag = 1
                             error_msg = str(be)
                             logger.error(
-                                f"{be} Aborting cycle and pausing all scraping for "
-                                f"{BLOCK_COOLDOWN_MINUTES} min (until {cooldown_end.strftime('%H:%M')}). "
+                                f"{be} Block #{scraper_state['consecutive_blocks']}. Aborting cycle and "
+                                f"pausing all scraping for {cooldown_min} min (until {cooldown_end.strftime('%H:%M')}). "
                                 f"Continuing to send requests would extend the block."
                             )
                             break
@@ -521,8 +529,12 @@ async def perform_scraping_cycle():
                             await asyncio.sleep(delay)
                 finally:
                     logger.info("Closing browser for cycle...")
-                    await browser.close()
+                    await context.close()
                 
+            if blocked_flag == 0:
+                # Reached the site without a block — clear the backoff.
+                scraper_state["consecutive_blocks"] = 0
+
             logger.info(f"Cycle complete. Processing {len(all_listings)} total matched items.")
             seen, new = await process_scraped_listings(all_listings)
             if seen is not None:
