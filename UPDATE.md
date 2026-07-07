@@ -92,6 +92,51 @@ sequence caps correctly.
 - Auth on API endpoints — fine for localhost-only use.
 - Async config-file I/O — file is tiny, not worth it.
 - Residential/mobile proxies — the decisive anti-ban lever, but paid; left for
-  later if the free changes above aren't enough.
-- Human-hours gating (skip overnight scrapes) — noted as a free option, not
-  implemented this session.
+  later if the free changes above aren't enough. (Planned in Tier 2.)
+
+---
+
+## [2026-07-07] Brainstormed Features
+
+- Created `new_features.md` to outline potential future features like proxy support, market analytics, AI analysis, and more.
+- Created `IMPLEMENTATION_PLAN.md` — an ordered (easiest-first) roadmap for those
+  features. Noted that price-drop alerts and the deal score were **already
+  implemented** in the codebase, so they were excluded from the plan.
+
+---
+
+## 3. Tier 1 features implemented
+
+Implemented the three Tier-1 quick wins from `IMPLEMENTATION_PLAN.md`.
+
+### 3a. Block alerts (`new_features.md` #7)
+A Datadome block previously only appeared in the logs. Now, when the scraper is
+blocked, it fires a one-time alert (desktop toast + Discord + ntfy) —
+`"⛔ Scraper blocked (block #N). Backing off until HH:MM."` — from inside the
+`BlockedError` handler in `perform_scraping_cycle` (`app.py`). Reuses the
+existing `send_discord_async` / `show_desktop_notification` helpers.
+
+### 3b. Mobile push via ntfy.sh (#8)
+Added `send_ntfy_sync` / `send_ntfy` helpers (stdlib `urllib`, no new
+dependency) that POST the alert body to `https://ntfy.sh/<topic>`. Wired into the
+new-listings, price-drop, and block-alert paths. Controlled by a new
+`ntfy_topic` config key (blank = disabled). The ntfy `Title` header is
+ASCII-sanitised (emoji stripped) since headers must be latin-1.
+
+### 3c. Human-hours scheduling (#9)
+Added a `within_active_hours(config)` helper and gated the automated scrape in
+`background_polling_loop` so cycles are skipped outside the configured window
+(handles windows that cross midnight; unset = always on). **Manual "Scrape Now"
+bypasses this** — the gate is in the loop, not in `perform_scraping_cycle`.
+Controlled by new `active_start` / `active_end` config keys (hour 0–23).
+
+### Config + UI
+- Added `ntfy_topic`, `active_start`, `active_end` to `ConfigModel` and
+  `load_config()` defaults (required, or the values would be dropped on save).
+- Added matching fields to the Settings tab (`static/index.html`) and the
+  load/save handlers (`static/index.js`).
+
+**Files touched:** `app.py`, `static/index.html`, `static/index.js`
+**Verification:** `app.py` compiles; `within_active_hours` logic checked with
+asserts (daytime window, midnight-crossing window, always-on default).
+**Status:** applied to the working tree (not yet committed at time of writing).

@@ -103,6 +103,9 @@ class ConfigModel(BaseModel):
     headless: bool = True
     deal_threshold_pct: int = 25
     deal_min_sample: int = 5
+    ntfy_topic: Optional[str] = ""
+    active_start: Optional[int] = None   # hour [0-23]; None = always active
+    active_end: Optional[int] = None
 
 # Helper functions
 def load_config() -> dict:
@@ -133,7 +136,10 @@ def load_config() -> dict:
         "discord_webhook": "",
         "headless": True,
         "deal_threshold_pct": 25,
-        "deal_min_sample": 5
+        "deal_min_sample": 5,
+        "ntfy_topic": "",
+        "active_start": None,
+        "active_end": None
     }
 
 def save_config(config: dict):
@@ -170,6 +176,36 @@ async def show_desktop_notification(title: str, message: str):
         )
     except Exception as e:
         logger.error(f"Failed to show desktop notification: {e}")
+
+def send_ntfy_sync(topic: str, title: str, message: str):
+    # ntfy.sh: POST the body to /<topic>. Title header must be ASCII (latin-1).
+    req = urllib.request.Request(
+        f"https://ntfy.sh/{topic}",
+        data=message.encode("utf-8"),
+        headers={"Title": title.encode("ascii", "ignore").decode(), "User-Agent": "Mozilla/5.0"}
+    )
+    with urllib.request.urlopen(req, timeout=10) as res:
+        return res.read()
+
+async def send_ntfy(config: dict, title: str, message: str):
+    topic = (config.get("ntfy_topic") or "").strip()
+    if not topic:
+        return
+    try:
+        await asyncio.to_thread(send_ntfy_sync, topic, title, message)
+    except Exception as e:
+        logger.error(f"Failed to send ntfy notification: {e}")
+
+def within_active_hours(config: dict) -> bool:
+    """True if scraping is allowed now. Unset start/end = always active."""
+    start = config.get("active_start")
+    end = config.get("active_end")
+    if start is None or end is None:
+        return True
+    hour = datetime.now().hour
+    if start <= end:
+        return start <= hour < end
+    return hour >= start or hour < end  # window crossing midnight
 
 def filter_listings(listings: List[dict], q: dict) -> List[dict]:
     req_keywords = [k.strip().lower() for k in (q.get("required_keywords") or "").split(",") if k.strip()]
@@ -282,9 +318,10 @@ async def process_scraped_listings(scraped_items: List[dict]):
                 
         # Desktop Toast
         await show_desktop_notification(title, message)
-        
+
         # Discord Notification
         config = load_config()
+        await send_ntfy(config, title.replace("!", ""), message)
         global_webhook = config.get("discord_webhook")
         queries = {q["id"]: q for q in config.get("queries", [])}
         
@@ -362,12 +399,13 @@ async def process_scraped_listings(scraped_items: List[dict]):
                     message += f"\n...and {len(price_drops) - 3} more."
                     
             await show_desktop_notification(title, message)
-            
+
             # Discord Notification
             config = load_config()
+            await send_ntfy(config, title.replace("!", ""), message)
             global_webhook = config.get("discord_webhook")
             queries = {q["id"]: q for q in config.get("queries", [])}
-            
+
             # Group items by webhook URL
             webhook_groups = {}
             for drop in price_drops:
@@ -516,6 +554,19 @@ async def perform_scraping_cycle():
                                 f"pausing all scraping for {cooldown_min} min (until {cooldown_end.strftime('%H:%M')}). "
                                 f"Continuing to send requests would extend the block."
                             )
+                            # Alert once per block so it's visible outside the logs
+                            try:
+                                alert_msg = (
+                                    f"Scraper blocked (block #{scraper_state['consecutive_blocks']}). "
+                                    f"Backing off until {cooldown_end.strftime('%H:%M')}."
+                                )
+                                await show_desktop_notification("Leboncoin Scraper Blocked", alert_msg)
+                                webhook = config.get("discord_webhook")
+                                if webhook and webhook.strip():
+                                    await send_discord_async(webhook, f"⛔ **{alert_msg}**")
+                                await send_ntfy(config, "Leboncoin Scraper Blocked", alert_msg)
+                            except Exception as alert_err:
+                                logger.error(f"Failed to send block alert: {alert_err}")
                             break
                         except Exception as e:
                             error_msg = str(e)
@@ -574,9 +625,16 @@ async def background_polling_loop():
                 next_run = datetime.now() + timedelta(seconds=interval)
                 scraper_state["next_run_time"] = next_run.isoformat()
                 
-                # Execute
-                await perform_scraping_cycle()
-                
+                # Execute (skip if outside configured active hours — fewer bot
+                # signals overnight; manual scrapes bypass this)
+                if within_active_hours(config):
+                    await perform_scraping_cycle()
+                else:
+                    logger.info(
+                        f"Outside active hours ({config.get('active_start')}h–"
+                        f"{config.get('active_end')}h); skipping this cycle."
+                    )
+
                 # Preserve the jittered next_run_time (perform_scraping_cycle may have reset it)
                 scraper_state["next_run_time"] = next_run.isoformat()
                 

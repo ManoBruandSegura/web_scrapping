@@ -688,6 +688,9 @@ document.addEventListener('DOMContentLoaded', () => {
             discordWebhookInput.value = config.discord_webhook || '';
             document.getElementById('deal_threshold_pct').value = config.deal_threshold_pct || 25;
             document.getElementById('deal_min_sample').value = config.deal_min_sample || 5;
+            document.getElementById('ntfy_topic').value = config.ntfy_topic || '';
+            document.getElementById('active_start').value = (config.active_start ?? '');
+            document.getElementById('active_end').value = (config.active_end ?? '');
             
         } catch (err) {
             showToast('Failed to load active scraper configuration.', 'error');
@@ -867,14 +870,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const discord_webhook = discordWebhookInput.value.trim();
         const deal_threshold_pct = parseInt(document.getElementById('deal_threshold_pct').value) || 25;
         const deal_min_sample = parseInt(document.getElementById('deal_min_sample').value) || 5;
-        
+        const ntfy_topic = document.getElementById('ntfy_topic').value.trim();
+        const startRaw = document.getElementById('active_start').value;
+        const endRaw = document.getElementById('active_end').value;
+        const active_start = startRaw === '' ? null : parseInt(startRaw);
+        const active_end = endRaw === '' ? null : parseInt(endRaw);
+
         const payload = {
             queries: state.queries,
             interval_minutes,
             headless,
             discord_webhook,
             deal_threshold_pct,
-            deal_min_sample
+            deal_min_sample,
+            ntfy_topic,
+            active_start,
+            active_end
         };
 
         try {

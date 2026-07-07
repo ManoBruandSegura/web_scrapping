@@ -322,6 +322,23 @@
                                     <span class="form-help">Min items required before computing deals.</span>
                                 </div>
                             </div>
+                            <div class="form-group mt-4">
+                                <label for="ntfy_topic" class="form-label">ntfy.sh Topic (mobile push)</label>
+                                <input type="text" id="ntfy_topic" class="form-control" placeholder="e.g. lbc-deals-8f3k">
+                                <span class="form-help">Subscribe to this topic in the ntfy app to get phone alerts. Leave blank to disable.</span>
+                            </div>
+                            <div class="form-row mt-4">
+                                <div class="form-group col">
+                                    <label for="active_start" class="form-label">Active From (hour)</label>
+                                    <input type="number" id="active_start" class="form-control" min="0" max="23" placeholder="e.g. 8">
+                                    <span class="form-help">Skip scrapes before this hour. Blank = always on.</span>
+                                </div>
+                                <div class="form-group col">
+                                    <label for="active_end" class="form-label">Active Until (hour)</label>
+                                    <input type="number" id="active_end" class="form-control" min="0" max="23" placeholder="e.g. 23">
+                                    <span class="form-help">Skip scrapes at/after this hour. Blank = always on.</span>
+                                </div>
+                            </div>
                             <div class="form-actions-row mt-4">
                                 <button type="submit" class="btn btn-primary btn-glow">
                                     <i class="fa-solid fa-floppy-disk"></i> Save Global Settings
